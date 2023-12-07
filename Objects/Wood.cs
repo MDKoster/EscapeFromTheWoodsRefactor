@@ -4,6 +4,7 @@ using System.Linq;
 using System.IO;
 using System.Drawing.Imaging;
 using System.Drawing;
+using EscapeFromTheWoods.Database;
 
 namespace EscapeFromTheWoods
 {
@@ -11,32 +12,34 @@ namespace EscapeFromTheWoods
     {
         private const int drawingFactor = 8;
         private string path;
-        private DBwriter db;
+        private MongoDBRepository repo;
         private Random r = new Random(1);
         public int woodID { get; set; }
-        public List<Tree> trees { get; set; }
+        public Dictionary<int, Tree> trees { get; set; }
         public List<Monkey> monkeys { get; private set; }
         private Map map;
-        public Wood(int woodID, List<Tree> trees, Map map, string path, DBwriter db)
+        public Wood(int woodID, Dictionary<int, Tree> trees, Map map, string path, MongoDBRepository repo)
         {
             this.woodID = woodID;
             this.trees = trees;
             this.monkeys = new List<Monkey>();
             this.map = map;
             this.path = path;
-            this.db = db;
+            this.repo = repo;
         }
         public void PlaceMonkey(string monkeyName, int monkeyID)
         {
             int treeNr;
+            int treeID;
             do
             {
                 treeNr = r.Next(0, trees.Count - 1);
+                treeID = trees.ElementAt(treeNr).Value.treeID;
             }
-            while (trees[treeNr].hasMonkey);
-            Monkey m = new Monkey(monkeyID, monkeyName, trees[treeNr]);
+            while (trees[treeID].hasMonkey);
+            Monkey m = new Monkey(monkeyID, monkeyName, trees[treeID]);
             monkeys.Add(m);
-            trees[treeNr].hasMonkey = true;
+            trees[treeID].hasMonkey = true;
         }
         public void Escape()
         {
@@ -47,6 +50,8 @@ namespace EscapeFromTheWoods
             }                
            WriteEscaperoutesToBitmap(routes);           
         }
+
+        //logging
         private void writeRouteToDB(Monkey monkey,List<Tree> route)
         {
             Console.ForegroundColor = ConsoleColor.DarkGreen;
@@ -56,7 +61,9 @@ namespace EscapeFromTheWoods
             {
                 records.Add(new DBMonkeyRecord(monkey.monkeyID, monkey.name, woodID,j, route[j].treeID, route[j].x, route[j].y));
             }
-            db.WriteMonkeyRecords(records);
+            DBMonkeyRecordSet set = new(records);
+            List<DBMonkeyRecordSet> setList = new List<DBMonkeyRecordSet>() { set };
+            repo.WriteMonkeyRecords(setList);
             Console.ForegroundColor = ConsoleColor.DarkGreen;
             Console.WriteLine($"{woodID}:write db routes {woodID},{monkey.name} end");
         }       
@@ -69,7 +76,7 @@ namespace EscapeFromTheWoods
             Graphics g = Graphics.FromImage(bm);
             int delta = drawingFactor / 2;
             Pen p = new Pen(Color.Green, 1);
-            foreach (Tree t in trees)
+            foreach (Tree t in trees.Values)
             {
                 g.DrawEllipse(p, t.x * drawingFactor, t.y * drawingFactor, drawingFactor, drawingFactor);
             }
@@ -99,11 +106,13 @@ namespace EscapeFromTheWoods
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"{woodID}:write db wood {woodID} start");
             List<DBWoodRecord> records = new List<DBWoodRecord>();
-            foreach(Tree t in trees)
+            foreach(Tree t in trees.Values)
             {
                 records.Add(new DBWoodRecord(woodID, t.treeID,t.x,t.y));
             }
-            db.WriteWoodRecords(records);
+            DBWoodRecordSet set = new(records);
+            List<DBWoodRecordSet> setList = new List<DBWoodRecordSet>() { set };
+            repo.WriteWoodRecords(setList);
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"{woodID}:write db wood {woodID} end");
         }
@@ -111,16 +120,16 @@ namespace EscapeFromTheWoods
         {
             Console.ForegroundColor = ConsoleColor.White;
             Console.WriteLine($"{woodID}:start {woodID},{monkey.name}");
-            Dictionary<int, bool> visited = new Dictionary<int, bool>();
-            trees.ForEach(x => visited.Add(x.treeID, false));
+            Dictionary<int, bool> visited = trees.Keys.ToDictionary(key => key, _ => false);
             List<Tree> route = new List<Tree>() { monkey.tree };
             do
             {
                 visited[monkey.tree.treeID] = true;
                 SortedList<double, List<Tree>> distanceToMonkey = new SortedList<double, List<Tree>>();
 
-                //zoek dichtste boom die nog niet is bezocht            
-                foreach (Tree t in trees)
+                //zoek dichtste boom die nog niet is bezocht
+                //TODO: gaat elke boom af. Kan efficienter door te limiteren welke bomen hij doorzoekt. (grids)
+                foreach (Tree t in trees.Values)
                 {
                     if ((!visited[t.treeID]) && (!t.hasMonkey))
                     {
@@ -129,10 +138,15 @@ namespace EscapeFromTheWoods
                         else distanceToMonkey.Add(d, new List<Tree>() { t });
                     }
                 }
-                //distance to border            
+                //distance to border
                 //noord oost zuid west
-                double distanceToBorder = (new List<double>(){ map.ymax - monkey.tree.y,
-                map.xmax - monkey.tree.x,monkey.tree.y-map.ymin,monkey.tree.x-map.xmin }).Min();
+                double distanceToBorder = (
+                    new List<double>(){ 
+                        map.ymax - monkey.tree.y,
+                        map.xmax - monkey.tree.x,
+                        monkey.tree.y-map.ymin,
+                        monkey.tree.x-map.xmin })
+                        .Min();
                 if (distanceToMonkey.Count == 0)
                 {
                     writeRouteToDB(monkey, route);
@@ -140,8 +154,7 @@ namespace EscapeFromTheWoods
                     Console.WriteLine($"{woodID}:end {woodID},{monkey.name}");
                     return route;
                 }
-                if (distanceToBorder < distanceToMonkey.First().Key)
-                {
+                if (distanceToBorder < distanceToMonkey.First().Key){
                     writeRouteToDB(monkey, route);
                     Console.ForegroundColor = ConsoleColor.White;
                     Console.WriteLine($"{woodID}:end {woodID},{monkey.name}");

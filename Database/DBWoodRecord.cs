@@ -1,4 +1,5 @@
-﻿using System;
+﻿using MongoDB.Bson;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -14,7 +15,6 @@ namespace EscapeFromTheWoods
             this.y = y;
         }
 
-        public int recordID { get; set; }
         public int woodID { get; set; }
         public int treeID { get; set; }
         public int x { get; set; }
