@@ -15,6 +15,7 @@ namespace EscapeFromTheWoods
         private MongoDBRepository repo;
         private Random r = new Random(1);
         public int woodID { get; set; }
+        //REFACTOR: List to Dict
         public Dictionary<int, Tree> trees { get; set; }
         public List<Monkey> monkeys { get; private set; }
         private Map map;
