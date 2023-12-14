@@ -25,7 +25,7 @@ namespace EscapeFromTheWoods.Database {
             var collection = _database.GetCollection<DBMonkeyRecordSet>("MonkeyRecords");
             collection.InsertMany(data);
         }
-
+        //TODO: Logs wegschrijven naar DB
         //public void WriteLogs(List<string>) {
 
         //}

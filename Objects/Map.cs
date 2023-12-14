@@ -18,5 +18,7 @@ namespace EscapeFromTheWoods
         public int xmax { get; set; }
         public int ymin { get; set; }
         public int ymax { get; set; }
+        public double DX { get => xmax - xmin; }
+        public double DY { get => ymax - ymin; }
     }
 }
